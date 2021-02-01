@@ -1,20 +1,8 @@
 #include <OneWire.h>
 #include <SPI.h> 
-#define BAUD_RATE 115200
-#define CHECKSUM 20
+const int blueLEDPin = 15;
+boolean blueLED = false;
 
-struct TransmitData
-{
-  float mAX31855_A = 0;
-  float mAX31855_B = 0;
-  float dS18B20_A = 0;
-  float dS18B20_B = 0;
-  int checkSum = CHECKSUM;
-};
-struct ReceiveData
-{
-  int checkSum;
-};
 struct DS18B20
 {
   int signalPin;
@@ -24,6 +12,7 @@ struct DS18B20
   OneWire oneWire;
   float temp = 0.0;
 };
+
 struct MAX31855
 {
   int chipSelectPin;
@@ -37,7 +26,7 @@ MAX31855 mAX31855_A;
 MAX31855 mAX31855_B;
 SPISettings spiSettings;
 
-void setupPins()
+void setup(void) 
 {
   dS18B20_A.signalPin = 3;
   dS18B20_A.powerPin = 2;
@@ -63,27 +52,35 @@ void setupPins()
 
   spiSettings = SPISettings(2000000, MSBFIRST, SPI_MODE1);
   SPI.begin();
+
+  pinMode(blueLEDPin, OUTPUT);
+  digitalWrite(blueLEDPin, blueLED);
+  Serial.begin(9600);
+  
 }
-void processNewSetting(TransmitData* tData, ReceiveData* rData, ReceiveData* newData)
+
+void loop(void) 
 {
-  rData->checkSum = newData->checkSum;
-}
-boolean processData(TransmitData* tData, ReceiveData* rData)
-{
+  digitalWrite(blueLEDPin, blueLED);
+  blueLED = !blueLED;
+  delay(2000);
   
   dS18B20_A.temp = getDS18B20Temperature(&dS18B20_A.oneWire, dS18B20_A.address, dS18B20_A.chipType);
   dS18B20_B.temp = getDS18B20Temperature(&dS18B20_B.oneWire, dS18B20_B.address, dS18B20_B.chipType);
 
   mAX31855_A.temp = getMAX31855Temperature(mAX31855_A.chipSelectPin, spiSettings);
   mAX31855_B.temp = getMAX31855Temperature(mAX31855_B.chipSelectPin, spiSettings);
-
-  tData->dS18B20_A = dS18B20_A.temp;
-  tData->dS18B20_B = dS18B20_B.temp;
-  tData->mAX31855_A = mAX31855_A.temp;
-  tData->mAX31855_B = mAX31855_B.temp;
-  delay(2000);
-  return true;
+ 
+  Serial.print(dS18B20_A.temp);
+  Serial.print(" ");
+  Serial.print(dS18B20_B.temp);
+  Serial.print(" ");
+  Serial.print(mAX31855_A.temp);
+  Serial.print(" ");
+  Serial.print(mAX31855_B.temp);
+  Serial.println();
 }
+
 float getDS18B20Temperature(OneWire* ow, byte* addr, byte chipType)
 {
   byte i;
@@ -179,70 +176,4 @@ float getMAX31855Temperature(int chipSelect, SPISettings spiSetup)
   }
   fTemp = ((float) iTemp) * 0.25;
   return fTemp;
-}
-
-const int commLEDPin = 15;
-boolean commLED = true;
-
-struct TXinfo
-{
-  int cubeInit = 1;
-  int newSettingDone = 0;
-};
-struct RXinfo
-{
-  int newSetting = 0;
-};
-
-struct TX
-{
-  TXinfo txInfo;
-  TransmitData txData;
-};
-struct RX
-{
-  RXinfo rxInfo;
-  ReceiveData rxData;
-};
-TX tx;
-RX rx;
-ReceiveData settingsStorage;
-
-int sizeOfTx = 0;
-int sizeOfRx = 0;
-
-void setup()
-{
-  setupPins();
-  pinMode(commLEDPin, OUTPUT);  
-  digitalWrite(commLEDPin, commLED);
-
-  sizeOfTx = sizeof(tx);
-  sizeOfRx = sizeof(rx);
-  Serial1.begin(BAUD_RATE);
-  delay(1000);
-}
-void loop()
-{
-  boolean goodData = false;
-  goodData = processData(&(tx.txData), &settingsStorage);
-  if (goodData)
-  {
-    tx.txInfo.newSettingDone = 0;
-    if(Serial1.available() > 0)
-    { 
-      commLED = !commLED;
-      digitalWrite(commLEDPin, commLED);
-      Serial1.readBytes((uint8_t*)&rx, sizeOfRx);
-      
-      if (rx.rxInfo.newSetting > 0)
-      {
-        processNewSetting(&(tx.txData), &settingsStorage, &(rx.rxData));
-        tx.txInfo.newSettingDone = 1;
-        tx.txInfo.cubeInit = 0;
-      }
-    }
-    Serial1.write((uint8_t*)&tx, sizeOfTx);
-  }
-  
 }
