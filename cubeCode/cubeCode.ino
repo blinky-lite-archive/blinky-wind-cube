@@ -1,7 +1,7 @@
 #include <OneWire.h>
 #include <SPI.h> 
-#define BAUD_RATE 115200
-#define CHECKSUM 20
+#define BAUD_RATE 57600
+#define CHECKSUM 64
 
 struct TransmitData
 {
@@ -9,11 +9,11 @@ struct TransmitData
   float mAX31855_B = 0;
   float dS18B20_A = 0;
   float dS18B20_B = 0;
-  int checkSum = CHECKSUM;
+  byte extraInfo[36];
 };
 struct ReceiveData
 {
-  int checkSum;
+  byte extraInfo[56];
 };
 struct DS18B20
 {
@@ -37,7 +37,7 @@ MAX31855 mAX31855_A;
 MAX31855 mAX31855_B;
 SPISettings spiSettings;
 
-void setupPins()
+void setupPins(TransmitData* tData, ReceiveData* rData)
 {
   dS18B20_A.signalPin = 3;
   dS18B20_A.powerPin = 2;
@@ -61,12 +61,14 @@ void setupPins()
   pinMode (mAX31855_B.chipSelectPin, OUTPUT);
   digitalWrite(mAX31855_B.chipSelectPin,HIGH);
 
+  int sizeOfextraInfo = sizeof(tData->extraInfo);
+  for (int ii = 0; ii < sizeOfextraInfo; ++ii) tData->extraInfo[ii] = 0;
+
   spiSettings = SPISettings(2000000, MSBFIRST, SPI_MODE1);
   SPI.begin();
 }
 void processNewSetting(TransmitData* tData, ReceiveData* rData, ReceiveData* newData)
 {
-  rData->checkSum = newData->checkSum;
 }
 boolean processData(TransmitData* tData, ReceiveData* rData)
 {
@@ -188,10 +190,12 @@ struct TXinfo
 {
   int cubeInit = 1;
   int newSettingDone = 0;
+  int checkSum = CHECKSUM;
 };
 struct RXinfo
 {
   int newSetting = 0;
+  int checkSum = CHECKSUM;
 };
 
 struct TX
@@ -213,7 +217,7 @@ int sizeOfRx = 0;
 
 void setup()
 {
-  setupPins();
+  setupPins(&(tx.txData), &settingsStorage);
   pinMode(commLEDPin, OUTPUT);  
   digitalWrite(commLEDPin, commLED);
 
@@ -235,14 +239,31 @@ void loop()
       digitalWrite(commLEDPin, commLED);
       Serial1.readBytes((uint8_t*)&rx, sizeOfRx);
       
-      if (rx.rxInfo.newSetting > 0)
+      if (rx.rxInfo.checkSum == CHECKSUM)
       {
-        processNewSetting(&(tx.txData), &settingsStorage, &(rx.rxData));
-        tx.txInfo.newSettingDone = 1;
-        tx.txInfo.cubeInit = 0;
+        if (rx.rxInfo.newSetting > 0)
+        {
+          processNewSetting(&(tx.txData), &settingsStorage, &(rx.rxData));
+          tx.txInfo.newSettingDone = 1;
+          tx.txInfo.cubeInit = 0;
+        }
+      }
+      else
+      {
+        Serial1.end();
+        for (int ii = 0; ii < 50; ++ii)
+        {
+          commLED = !commLED;
+          digitalWrite(commLEDPin, commLED);
+          delay(100);
+        }
+
+        Serial1.begin(BAUD_RATE);
+        tx.txInfo.newSettingDone = 0;
+        tx.txInfo.cubeInit = -1;
       }
     }
     Serial1.write((uint8_t*)&tx, sizeOfTx);
+    Serial1.flush();
   }
-  
 }
