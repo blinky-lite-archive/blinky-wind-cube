@@ -78,7 +78,7 @@ void processNewSetting(TransmitData* tData, ReceiveData* rData, ReceiveData* new
 }
 boolean processData(TransmitData* tData, ReceiveData* rData)
 {
-  tData->windSpeed = 2400.0 / anemometerPulseInt;
+  tData->windSpeed = 666.7 / anemometerPulseInt;
   tData->windDirection = windDirectionLookup((float) analogRead(windVanePin));
   delay(rData->loopDelay);
   return true;
