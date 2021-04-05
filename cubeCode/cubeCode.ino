@@ -1,4 +1,4 @@
-#define BAUD_RATE 9600
+#define BAUD_RATE 57600
 #define CHECKSUM 64
 #define R0 9.85
 #define V0 1010.0
