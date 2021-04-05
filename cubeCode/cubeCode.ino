@@ -1,3 +1,4 @@
+#include <OneWire.h>
 #define BAUD_RATE 57600
 #define CHECKSUM 64
 #define R0 9.85
@@ -20,14 +21,88 @@ struct TransmitData
 {
   float windSpeed = 0.0;
   float windDirection = 0.0;
-  byte extraInfo[44];
+  float temperature = 0.0;
+  byte extraInfo[40];
 };
 struct ReceiveData
 {
-  int loopDelay = 1000;
+  int loopDelay = 100;
   float faverageSamples = 16.0;
   byte extraInfo[48];
 };
+
+struct DS18B20
+{
+  int signalPin;
+  int powerPin;
+  byte chipType;
+  byte address[8];
+  OneWire oneWire;
+  float temp = 0.0;
+};
+DS18B20 dS18B20_A;
+
+byte initDS18B20(byte* addr, OneWire* ow)
+{
+  byte type_s = 0;
+  if ( !ow->search(addr)) 
+  {
+    ow->reset_search();
+    delay(250);
+    return 0;
+  }
+   
+  // the first ROM byte indicates which chip
+  switch (addr[0]) 
+  {
+    case 0x10:
+      type_s = 1;
+      break;
+    case 0x28:
+      type_s = 0;
+      break;
+    case 0x22:
+      type_s = 0;
+      break;
+    default:
+      return 0;
+  } 
+  return type_s;
+}
+
+float getDS18B20Temperature(OneWire* ow, byte* addr, byte chipType)
+{
+  byte i;
+  byte data[12];
+  float celsius;
+  ow->reset();
+  ow->select(addr);
+  ow->write(0x44, 1);        // start conversion, with parasite power on at the end
+  
+  delay(750);     // maybe 750ms is enough, maybe not
+  
+  ow->reset();
+  ow->select(addr);    
+  ow->write(0xBE);         // Read Scratchpad
+
+  for ( i = 0; i < 9; i++) data[i] = ow->read();
+  int16_t raw = (data[1] << 8) | data[0];
+  if (chipType) 
+  {
+    raw = raw << 3; // 9 bit resolution default
+    if (data[7] == 0x10)  raw = (raw & 0xFFF0) + 12 - data[6];
+  }
+  else 
+  {
+    byte cfg = (data[4] & 0x60);
+    if (cfg == 0x00) raw = raw & ~7;  // 9 bit resolution, 93.75 ms
+    else if (cfg == 0x20) raw = raw & ~3; // 10 bit res, 187.5 ms
+    else if (cfg == 0x40) raw = raw & ~1; // 11 bit res, 375 ms
+  }
+  celsius = (float)raw / 16.0;
+  return celsius;
+  
+}
 
 void anemometerPulseHandler()
 {
@@ -69,6 +144,14 @@ void setupPins(TransmitData* tData, ReceiveData* rData)
   lastPulseTime = millis();
   for (int ii = 0; ii < 16; ++ii) windVolts[ii] = V0 * windDirR[ii] / (R0 +  windDirR[ii]);
   fsamp = rData->faverageSamples;
+
+  dS18B20_A.signalPin = 22;
+  dS18B20_A.powerPin = 23;
+  pinMode(dS18B20_A.powerPin, OUTPUT);
+  digitalWrite(dS18B20_A.powerPin, HIGH);    
+  dS18B20_A.oneWire = OneWire(dS18B20_A.signalPin);
+  dS18B20_A.chipType = initDS18B20(dS18B20_A.address, &dS18B20_A.oneWire);
+
 }
 void processNewSetting(TransmitData* tData, ReceiveData* rData, ReceiveData* newData)
 {
@@ -80,6 +163,8 @@ boolean processData(TransmitData* tData, ReceiveData* rData)
 {
   tData->windSpeed = 666.7 / anemometerPulseInt;
   tData->windDirection = windDirectionLookup((float) analogRead(windVanePin));
+  dS18B20_A.temp = getDS18B20Temperature(&dS18B20_A.oneWire, dS18B20_A.address, dS18B20_A.chipType);
+  tData->temperature = dS18B20_A.temp;
   delay(rData->loopDelay);
   return true;
 }
@@ -125,7 +210,7 @@ void setup()
 
   sizeOfTx = sizeof(tx);
   sizeOfRx = sizeof(rx);
-  Serial.begin(BAUD_RATE);
+  Serial1.begin(BAUD_RATE);
   delay(1000);  
   int sizeOfextraInfo = sizeof(tx.txData.extraInfo);
   for (int ii = 0; ii < sizeOfextraInfo; ++ii) tx.txData.extraInfo[ii] = 0;
@@ -138,11 +223,11 @@ void loop()
   if (goodData)
   {
     tx.txInfo.newSettingDone = 0;
-    if(Serial.available() > 0)
+    if(Serial1.available() > 0)
     { 
       commLED = !commLED;
       digitalWrite(commLEDPin, commLED);
-      Serial.readBytes((char*)&rx, sizeOfRx);
+      Serial1.readBytes((uint8_t*)&rx, sizeOfRx);
       
       if (rx.rxInfo.checkSum == CHECKSUM)
       {
@@ -155,7 +240,7 @@ void loop()
       }
       else
       {
-        Serial.end();
+        Serial1.end();
         for (int ii = 0; ii < 50; ++ii)
         {
           commLED = !commLED;
@@ -163,12 +248,12 @@ void loop()
           delay(100);
         }
 
-        Serial.begin(BAUD_RATE);
+        Serial1.begin(BAUD_RATE);
         tx.txInfo.newSettingDone = 0;
         tx.txInfo.cubeInit = -1;
       }
     }
-    Serial.write((uint8_t*)&tx, sizeOfTx);
-    Serial.flush();
+    Serial1.write((uint8_t*)&tx, sizeOfTx);
+    Serial1.flush();
   }
 }
