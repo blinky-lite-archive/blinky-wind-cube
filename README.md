@@ -1,1 +1,1 @@
-# blinky-lite-thermo-cube
+# blinky-wind-cube

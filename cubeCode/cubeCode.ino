@@ -1,189 +1,91 @@
-#include <OneWire.h>
-#include <SPI.h> 
-#define BAUD_RATE 57600
+#define BAUD_RATE 9600
 #define CHECKSUM 64
+#define R0 9.85
+#define V0 1010.0
+int anemometerLEDPin = 3;
+int anemometerPin = 4;
+int windVanePin = A0;
+
+volatile boolean anemometerLED = false;
+volatile unsigned long lastPulseTime = 0;
+volatile unsigned long nowTime = 0;
+volatile float fsamp = 16.0;
+volatile float anemometerPulseInt = 10000.0;
+
+float windDirR[16] = {33.0,  6.57, 8.2,  0.891, 1.0,    0.688,   2.2,   1.41,  3.9,   3.14,  16.0,  14.12, 120.0,  42.12,  64.9,  21.88};
+float windDir[16] =  { 0.0, 22.5, 45.0, 67.5,  90.0, 112.5,    135.0, 157.5, 180.0, 202.5,  225.0, 247.5,  270.0, 292.5,  315.0, 337.5 };
+float windVolts[16];
 
 struct TransmitData
 {
-  float mAX31855_A = 0;
-  float mAX31855_B = 0;
-  float dS18B20_A = 0;
-  float dS18B20_B = 0;
-  byte extraInfo[36];
+  float windSpeed = 0.0;
+  float windDirection = 0.0;
+  byte extraInfo[44];
 };
 struct ReceiveData
 {
-  byte extraInfo[56];
-};
-struct DS18B20
-{
-  int signalPin;
-  int powerPin;
-  byte chipType;
-  byte address[8];
-  OneWire oneWire;
-  float temp = 0.0;
-};
-struct MAX31855
-{
-  int chipSelectPin;
-  float temp = 0.0;
+  int loopDelay = 1000;
+  float faverageSamples = 16.0;
+  byte extraInfo[48];
 };
 
-DS18B20 dS18B20_A;
-DS18B20 dS18B20_B;
+void anemometerPulseHandler()
+{
+  float deltaT;
+  nowTime = millis();
+  deltaT = (float) (nowTime - lastPulseTime);
+  lastPulseTime = nowTime;
+  anemometerLED = !anemometerLED;
+  digitalWrite(anemometerLEDPin,anemometerLED);
+  if (deltaT > 10000.0) return;
+  anemometerPulseInt = anemometerPulseInt + (deltaT - anemometerPulseInt) / fsamp;
+  return;
+}
 
-MAX31855 mAX31855_A;
-MAX31855 mAX31855_B;
-SPISettings spiSettings;
+float windDirectionLookup(float sensV)
+{
+  float errorMin = abs(sensV - windVolts[0]);
+  float error = 0.0;
+  int iwindDir = 0;
+  for (int ii = 1; ii < 16; ++ii)
+  {
+    error = abs(sensV - windVolts[ii]);
+    if (errorMin > error)
+    {
+      errorMin = error;
+      iwindDir = ii;
+    }
+  }
+  return(windDir[iwindDir]);
+}
 
 void setupPins(TransmitData* tData, ReceiveData* rData)
 {
-  dS18B20_A.signalPin = 3;
-  dS18B20_A.powerPin = 2;
-  pinMode(dS18B20_A.powerPin, OUTPUT);
-  digitalWrite(dS18B20_A.powerPin, HIGH);    
-  dS18B20_A.oneWire = OneWire(dS18B20_A.signalPin);
-  dS18B20_A.chipType = initDS18B20(dS18B20_A.address, &dS18B20_A.oneWire);
-
-  dS18B20_B.signalPin = 5;
-  dS18B20_B.powerPin = 4;
-  pinMode(dS18B20_B.powerPin, OUTPUT);
-  digitalWrite(dS18B20_B.powerPin, HIGH);    
-  dS18B20_B.oneWire = OneWire(dS18B20_B.signalPin);
-  dS18B20_B.chipType = initDS18B20(dS18B20_B.address, &dS18B20_B.oneWire);
-
-  mAX31855_A.chipSelectPin = 10;
-  pinMode (mAX31855_A.chipSelectPin, OUTPUT);
-  digitalWrite(mAX31855_A.chipSelectPin,HIGH);
-
-  mAX31855_B.chipSelectPin = 6;
-  pinMode (mAX31855_B.chipSelectPin, OUTPUT);
-  digitalWrite(mAX31855_B.chipSelectPin,HIGH);
-
-  int sizeOfextraInfo = sizeof(tData->extraInfo);
-  for (int ii = 0; ii < sizeOfextraInfo; ++ii) tData->extraInfo[ii] = 0;
-
-  spiSettings = SPISettings(2000000, MSBFIRST, SPI_MODE1);
-  SPI.begin();
+  pinMode(anemometerLEDPin, OUTPUT);
+  pinMode(anemometerPin, INPUT);
+  pinMode(windVanePin, INPUT);
+  attachInterrupt(anemometerPin, anemometerPulseHandler, RISING);
+  digitalWrite(anemometerLEDPin,anemometerLED);
+  lastPulseTime = millis();
+  for (int ii = 0; ii < 16; ++ii) windVolts[ii] = V0 * windDirR[ii] / (R0 +  windDirR[ii]);
+  fsamp = rData->faverageSamples;
 }
 void processNewSetting(TransmitData* tData, ReceiveData* rData, ReceiveData* newData)
 {
+  rData->loopDelay = newData->loopDelay;
+  rData->faverageSamples = newData->faverageSamples;
+  fsamp = rData->faverageSamples;
 }
 boolean processData(TransmitData* tData, ReceiveData* rData)
 {
-  
-  dS18B20_A.temp = getDS18B20Temperature(&dS18B20_A.oneWire, dS18B20_A.address, dS18B20_A.chipType);
-  dS18B20_B.temp = getDS18B20Temperature(&dS18B20_B.oneWire, dS18B20_B.address, dS18B20_B.chipType);
-
-  mAX31855_A.temp = getMAX31855Temperature(mAX31855_A.chipSelectPin, spiSettings);
-  mAX31855_B.temp = getMAX31855Temperature(mAX31855_B.chipSelectPin, spiSettings);
-
-  tData->dS18B20_A = dS18B20_A.temp;
-  tData->dS18B20_B = dS18B20_B.temp;
-  tData->mAX31855_A = mAX31855_A.temp;
-  tData->mAX31855_B = mAX31855_B.temp;
-  delay(2000);
+  tData->windSpeed = 2400.0 / anemometerPulseInt;
+  tData->windDirection = windDirectionLookup((float) analogRead(windVanePin));
+  delay(rData->loopDelay);
   return true;
 }
-float getDS18B20Temperature(OneWire* ow, byte* addr, byte chipType)
-{
-  byte i;
-  byte data[12];
-  float celsius;
-  ow->reset();
-  ow->select(addr);
-  ow->write(0x44, 1);        // start conversion, with parasite power on at the end
-  
-  delay(750);     // maybe 750ms is enough, maybe not
-  
-  ow->reset();
-  ow->select(addr);    
-  ow->write(0xBE);         // Read Scratchpad
 
-  for ( i = 0; i < 9; i++) data[i] = ow->read();
-  int16_t raw = (data[1] << 8) | data[0];
-  if (chipType) 
-  {
-    raw = raw << 3; // 9 bit resolution default
-    if (data[7] == 0x10)  raw = (raw & 0xFFF0) + 12 - data[6];
-  }
-  else 
-  {
-    byte cfg = (data[4] & 0x60);
-    if (cfg == 0x00) raw = raw & ~7;  // 9 bit resolution, 93.75 ms
-    else if (cfg == 0x20) raw = raw & ~3; // 10 bit res, 187.5 ms
-    else if (cfg == 0x40) raw = raw & ~1; // 11 bit res, 375 ms
-  }
-  celsius = (float)raw / 16.0;
-  return celsius;
-  
-}
 
-byte initDS18B20(byte* addr, OneWire* ow)
-{
-  byte type_s = 0;
-  if ( !ow->search(addr)) 
-  {
-    ow->reset_search();
-    delay(250);
-    return 0;
-  }
-   
-  // the first ROM byte indicates which chip
-  switch (addr[0]) 
-  {
-    case 0x10:
-      type_s = 1;
-      break;
-    case 0x28:
-      type_s = 0;
-      break;
-    case 0x22:
-      type_s = 0;
-      break;
-    default:
-      return 0;
-  } 
-  return type_s;
-}
-float getMAX31855Temperature(int chipSelect, SPISettings spiSetup)
-{
-  uint8_t  dataBufRead[4];
-  int bits[32];
-  int iTemp = 0;
-  float fTemp;
-  int pow2 = 1; 
-
-  SPI.beginTransaction(spiSetup);
-  digitalWrite (chipSelect, LOW);
-  SPI.transfer(&dataBufRead, 4);
-  digitalWrite (chipSelect, HIGH);
-  SPI.endTransaction();
-
-  for (int ibyte = 0; ibyte < 4; ++ibyte)
-  {
-    for (int ibit = 0; ibit < 8; ++ibit)
-    {
-      bits[31 - (ibyte * 8 + 7 - ibit)] = ((dataBufRead[ibyte] >> ibit) % 2);
-    }
-  }
-  iTemp = 0;
-  pow2 = 1;
-  for (int ibit = 18; ibit < 31; ++ibit)
-  {
-    iTemp = iTemp + pow2 * bits[ibit];
-    pow2 = pow2 * 2;
-  }
-  if (bits[31] > 0)
-  {
-    iTemp = iTemp - 8192;
-  }
-  fTemp = ((float) iTemp) * 0.25;
-  return fTemp;
-}
-
-const int commLEDPin = 15;
+const int commLEDPin = 5;
 boolean commLED = true;
 
 struct TXinfo
@@ -223,8 +125,11 @@ void setup()
 
   sizeOfTx = sizeof(tx);
   sizeOfRx = sizeof(rx);
-  Serial1.begin(BAUD_RATE);
-  delay(1000);
+  Serial.begin(BAUD_RATE);
+  delay(1000);  
+  int sizeOfextraInfo = sizeof(tx.txData.extraInfo);
+  for (int ii = 0; ii < sizeOfextraInfo; ++ii) tx.txData.extraInfo[ii] = 0;
+
 }
 void loop()
 {
@@ -233,11 +138,11 @@ void loop()
   if (goodData)
   {
     tx.txInfo.newSettingDone = 0;
-    if(Serial1.available() > 0)
+    if(Serial.available() > 0)
     { 
       commLED = !commLED;
       digitalWrite(commLEDPin, commLED);
-      Serial1.readBytes((uint8_t*)&rx, sizeOfRx);
+      Serial.readBytes((char*)&rx, sizeOfRx);
       
       if (rx.rxInfo.checkSum == CHECKSUM)
       {
@@ -250,7 +155,7 @@ void loop()
       }
       else
       {
-        Serial1.end();
+        Serial.end();
         for (int ii = 0; ii < 50; ++ii)
         {
           commLED = !commLED;
@@ -258,12 +163,12 @@ void loop()
           delay(100);
         }
 
-        Serial1.begin(BAUD_RATE);
+        Serial.begin(BAUD_RATE);
         tx.txInfo.newSettingDone = 0;
         tx.txInfo.cubeInit = -1;
       }
     }
-    Serial1.write((uint8_t*)&tx, sizeOfTx);
-    Serial1.flush();
+    Serial.write((uint8_t*)&tx, sizeOfTx);
+    Serial.flush();
   }
 }
