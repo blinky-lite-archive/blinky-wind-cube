@@ -3,7 +3,7 @@
 #define CHECKSUM 64
 #define R0 9.85
 #define V0 1010.0
-int anemometerLEDPin = 3;
+int anemometerLEDPin = 8;
 int anemometerPin = 4;
 int windVanePin = A0;
 
@@ -145,8 +145,8 @@ void setupPins(TransmitData* tData, ReceiveData* rData)
   for (int ii = 0; ii < 16; ++ii) windVolts[ii] = V0 * windDirR[ii] / (R0 +  windDirR[ii]);
   fsamp = rData->faverageSamples;
 
-  dS18B20_A.signalPin = 22;
-  dS18B20_A.powerPin = 23;
+  dS18B20_A.signalPin = 20;
+  dS18B20_A.powerPin = 22;
   pinMode(dS18B20_A.powerPin, OUTPUT);
   digitalWrite(dS18B20_A.powerPin, HIGH);    
   dS18B20_A.oneWire = OneWire(dS18B20_A.signalPin);
@@ -170,7 +170,7 @@ boolean processData(TransmitData* tData, ReceiveData* rData)
 }
 
 
-const int commLEDPin = 5;
+const int commLEDPin = 6;
 boolean commLED = true;
 
 struct TXinfo
