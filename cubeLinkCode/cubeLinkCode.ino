@@ -17,13 +17,13 @@ RH_RF95::ModemConfigChoice modeConfig[] = {
 RH_RF95 rf95(RFM95_CS, RFM95_INT);
 struct Radiopacket
 {
-  byte transAddr = 24;
+  byte transAddr = 25;
   float windSpeed = 0.0;
   float windDirection = 0.0;
   float temp = 0.0;
   float measuredvbat = 0.0;
   byte extraInfo[2];
-  byte endByte = 24;
+  byte endByte = 25;
 };
 Radiopacket radiopacket;
 uint8_t sizeOfextraInfo = sizeof(radiopacket.extraInfo);
@@ -32,8 +32,8 @@ uint8_t sizeOfRadiopacket = sizeof(radiopacket);
 boolean pin9Value = false;
 boolean pin12Value = true;
 int modemConfigIndex = 1;
-float rfFreq = 433.55;
-byte transAddr = 24;
+float rfFreq = 433.800;
+byte transAddr = 25;
 
 struct TransmitData
 {
@@ -41,7 +41,8 @@ struct TransmitData
   float windDirection = 0.0;
   float temp = 0.0;
   float measuredvbat = 0.0;
-  byte extraInfo[36];
+  int   signalStrength = 0.0;
+  byte extraInfo[32];
 };
 struct ReceiveData
 {
@@ -93,19 +94,23 @@ boolean processData(TransmitData* tData, ReceiveData* rData)
         if (radiopacket.extraInfo[sizeOfextraInfo - 1] == 1) pin12Value = true;
         digitalWrite(9, pin9Value);
         digitalWrite(12, pin12Value);
-/*  
-        Serial.print(radiopacket.windSpeed);
-        Serial.print(',');
-        Serial.print(radiopacket.temp);
-        Serial.print(',');
-        Serial.print(radiopacket.windDirection);
-        Serial.print(',');
-        Serial.println(radiopacket.measuredvbat);
-*/  
         tData->windSpeed      = radiopacket.windSpeed;
         tData->windDirection  = radiopacket.windDirection;
         tData->temp           = radiopacket.temp;
         tData->measuredvbat   = radiopacket.measuredvbat;
+        tData->signalStrength = rf95.lastRssi();
+
+/*  
+        Serial.print(tData->windSpeed);
+        Serial.print(',');
+        Serial.print(tData->temp);
+        Serial.print(',');
+        Serial.print(tData->windDirection);
+        Serial.print(',');
+        Serial.print(tData->measuredvbat);
+        Serial.print(',');
+        Serial.println(tData->signalStrength);
+*/  
         waitForData = false;
       }
     }

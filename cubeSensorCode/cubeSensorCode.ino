@@ -19,7 +19,7 @@ RH_RF95 rf95(RFM95_CS, RFM95_INT);
 
 int sigPower = 20;
 int modemConfigIndex = 1;
-float rfFreq = 433.55;
+float rfFreq = 433.800;
 int loopDelay = 10000;
 
 int commLEDPin = 13;
@@ -39,13 +39,13 @@ OneWire oneWireA(dS18B20_A.signalPin);
 
 struct Radiopacket
 {
-  byte transAddr = 24;
+  byte transAddr = 25;
   float windSpeed = 0.0;
   float windDirection = 0.0;
   float temp = 0.0;
   float measuredvbat = 0.0;
   byte extraInfo[2];
-  byte endByte = 24;
+  byte endByte = 25;
 };
 Radiopacket radiopacket;
 uint8_t sizeOfextraInfo = sizeof(radiopacket.extraInfo);
@@ -190,7 +190,7 @@ void loop()
   digitalWrite(commLEDPin, HIGH);
   rf95.send((uint8_t *)&radiopacket, sizeOfRadiopacket);
   digitalWrite(commLEDPin, LOW);
-/*  
+/* 
   Serial.print(radiopacket.windSpeed);
   Serial.print(',');
   Serial.print(radiopacket.temp);
@@ -198,7 +198,7 @@ void loop()
   Serial.print(radiopacket.windDirection);
   Serial.print(',');
   Serial.println(radiopacket.measuredvbat);
-*/  
+*/ 
   delay(500);
   digitalWrite(dS18B20_A.powerPin, LOW); 
   digitalWrite(commLEDPin, LOW);
