@@ -1,6 +1,6 @@
 
 String at = "AT";
-String deviceName = "AT+NAMEWD01";
+String deviceName = "AT+NAMEWD02";
 String password = "AT+PIN5822";
 String baudRate = "AT+BAUD7";
 // Command Reference
@@ -23,9 +23,9 @@ void setup()
   Serial.begin(9600);
   Serial1.begin(57600);
   sendATCommand(at); 
-//  sendATCommand(deviceName);
-//  sendATCommand(password);
-//  sendATCommand(baudRate);
+  sendATCommand(deviceName);
+  sendATCommand(password);
+  sendATCommand(baudRate);
 }
 
 void loop()

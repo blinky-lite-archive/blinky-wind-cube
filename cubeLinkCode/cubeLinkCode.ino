@@ -100,7 +100,7 @@ boolean processData(TransmitData* tData, ReceiveData* rData)
         tData->measuredvbat   = radiopacket.measuredvbat;
         tData->signalStrength = rf95.lastRssi();
 
-/*  
+ /* 
         Serial.print(tData->windSpeed);
         Serial.print(',');
         Serial.print(tData->temp);
